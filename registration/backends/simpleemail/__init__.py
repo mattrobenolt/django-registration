@@ -86,7 +86,7 @@ class SimpleEmailBackend(object):
 
         """
         username, email, password = kwargs['username'], kwargs['email'], kwargs['password1']
-        
+
         first_name = kwargs.get('first_name', '')
         last_name = kwargs.get('last_name', '')
 
