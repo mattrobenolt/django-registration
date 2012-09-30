@@ -1,21 +1,22 @@
 from django.conf import settings
 from django.contrib.sites.models import RequestSite
 from django.contrib.sites.models import Site
+from django.contrib.auth import authenticate, login
 
 from registration import signals
-from registration.forms import RegistrationForm
+from registration.forms import RegistrationFormNoUserName
 from registration.models import RegistrationProfile
 
 
-class DefaultBackend(object):
+class SimpleEmailBackend(object):
     """
     A registration backend which follows a simple workflow:
 
-    1. User signs up, inactive account is created.
+    1. User signs up with only an email address and first/last
+        name, and is automatically logged into an active account.
 
-    2. Email is sent to user with activation link.
-
-    3. User clicks activation link, account is now active.
+    2. Email is sent to user with an activation link for
+        email validation.
 
     Using this backend requires that
 
@@ -34,6 +35,15 @@ class DefaultBackend(object):
       the activation email. See the notes for this backends
       ``register`` method for details regarding these templates.
 
+    * The EmailAuthBackend should be installed. You can install it 
+      alongside the default auth backend, allowing both traditional 
+      and email-only authentication:
+
+        AUTHENTICATION_BACKENDS = (
+            'registration.EmailAuthBackend',
+            'django.contrib.auth.backends.ModelBackend',
+        )
+
     Additionally, registration can be temporarily closed by adding the
     setting ``REGISTRATION_OPEN`` and setting it to
     ``False``. Omitting this setting, or setting it to ``True``, will
@@ -44,6 +54,11 @@ class DefaultBackend(object):
     an instance of ``registration.models.RegistrationProfile``. See
     that model and its custom manager for full documentation of its
     fields and supported operations.
+    
+    RegistrationProfile can be checked later to determine if the 
+    email was validated. The following example shows how:
+    
+    is_validated = request.user.registration_profile.is_validated()
     
     """
     def register(self, request, **kwargs):
@@ -71,7 +86,7 @@ class DefaultBackend(object):
 
         """
         username, email, password = kwargs['username'], kwargs['email'], kwargs['password1']
-
+        
         first_name = kwargs.get('first_name', '')
         last_name = kwargs.get('last_name', '')
 
@@ -79,10 +94,12 @@ class DefaultBackend(object):
             site = Site.objects.get_current()
         else:
             site = RequestSite(request)
-        new_user = RegistrationProfile.objects.create_inactive_user(username, email,
-                                                                    password, site
-                                                                    first_name=first_name,
-                                                                    last_name=last_name)
+        new_user = RegistrationProfile.objects.create_user(username, email, password, site,
+                                                           first_name=first_name, last_name=last_name)
+
+        new_user = authenticate(username=username, password=password)
+        login(request, new_user)
+
         signals.user_registered.send(sender=self.__class__,
                                      user=new_user,
                                      request=request)
@@ -126,7 +143,7 @@ class DefaultBackend(object):
         Return the default form class used for user registration.
         
         """
-        return RegistrationForm
+        return RegistrationFormNoUserName
 
     def post_registration_redirect(self, request, user):
         """
@@ -134,7 +151,7 @@ class DefaultBackend(object):
         user registration.
         
         """
-        return ('registration_complete', (), {})
+        return (getattr(settings, 'LOGIN_REDIRECT_URL', 'registration_complete'), (), {})
 
     def post_activation_redirect(self, request, user):
         """
@@ -143,3 +160,4 @@ class DefaultBackend(object):
         
         """
         return ('registration_activation_complete', (), {})
+

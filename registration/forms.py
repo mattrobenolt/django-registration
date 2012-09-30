@@ -95,6 +95,63 @@ class RegistrationFormUniqueEmail(RegistrationForm):
             raise forms.ValidationError(_("This email address is already in use. Please supply a different email address."))
         return self.cleaned_data['email']
 
+class RegistrationFormNoUserName(RegistrationFormUniqueEmail):
+    """
+    Based on http://djangosnippets.org/snippets/686/ with modifications by Cole Krumbholz
+    
+    A registration form that only requires the user to enter their e-mail 
+    address and password. The username is automatically generated
+    This class requires django-registration to extend the 
+    RegistrationFormUniqueEmail.
+    
+    """ 
+    username = forms.CharField(widget=forms.HiddenInput, max_length=75, required=False)
+
+    email = forms.EmailField(widget=forms.TextInput(attrs=dict(attrs_dict, maxlength=75)),
+                             label=_("E-mail"))
+
+    first_name = forms.CharField(widget=forms.TextInput(attrs=dict(attrs_dict, maxlength=30)))
+
+    last_name = forms.CharField(widget=forms.TextInput(attrs=dict(attrs_dict, maxlength=30)))
+
+    def clean_username(self):
+        "This function is required to overwrite an inherited username clean"
+        return self.cleaned_data['username']
+
+    def clean(self):
+        if not self.errors:
+            # originally this snipped shortened the username using the following encoding of the email:
+            #
+            # self.cleaned_data['username'] = '%s%s' % (self.cleaned_data['email'].split('@',1)[0], User.objects.count())
+            #
+            # In my limited testing I have not found a problem with usernames > 30 characters long
+            # so I simply use the email for the username:
+            self.cleaned_data['email'] = self.cleaned_data['email'].strip().lower()
+            self.cleaned_data['username'] = self.cleaned_data['email']
+            
+        super(RegistrationFormNoUserName, self).clean()
+        return self.cleaned_data
+
+    def __init__(self, *args, **kwargs):
+        # reorder the fields
+        # see discussion at http://stackoverflow.com/questions/913589/django-forms-inheritance-and-order-of-form-fields
+        
+        super(RegistrationFormNoUserName, self).__init__(*args, **kwargs)
+        self.fields.keyOrder = ['email', 'password1', 'password2']
+
+
+class RegistrationFormNoUserNameWithFirstLast(RegistrationFormNoUserName):
+    first_name = forms.CharField(widget=forms.TextInput(attrs=dict(attrs_dict, maxlength=30)))
+
+    last_name = forms.CharField(widget=forms.TextInput(attrs=dict(attrs_dict, maxlength=30)))
+
+    def __init__(self, *args, **kwargs):
+        # reorder the fields
+        # see discussion at http://stackoverflow.com/questions/913589/django-forms-inheritance-and-order-of-form-fields
+        
+        super(RegistrationFormNoUserName, self).__init__(*args, **kwargs)
+        self.fields.keyOrder = ['email', 'first_name', 'last_name', 'password1', 'password2']
+
 
 class RegistrationFormNoFreeEmail(RegistrationForm):
     """
@@ -121,3 +178,12 @@ class RegistrationFormNoFreeEmail(RegistrationForm):
         if email_domain in self.bad_domains:
             raise forms.ValidationError(_("Registration using free email addresses is prohibited. Please supply a different email address."))
         return self.cleaned_data['email']
+
+
+class EmailOnlyAuthenticationForm(AuthenticationForm):
+    """
+    Subclass of django.contrib.auth.AuthenticationForm that accepts
+    emails for usernames
+    """
+    username = forms.EmailField(widget=forms.TextInput(attrs=dict(attrs_dict, maxlength=75)), 
+                                label=_("E-mail / Username"))

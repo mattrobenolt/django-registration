@@ -65,7 +65,15 @@ class RegistrationManager(models.Manager):
         return False
     
     def create_inactive_user(self, username, email, password,
-                             site, send_email=True):
+                             site, send_email=True,
+                             first_name='', last_name=''):
+        return self.create_user(username, email, password,
+                                site=site, active=False,
+                                first_name=first_name, last_name=last_name)
+
+    def create_user(self, username, email, password,
+                    site, send_email=True,
+                    first_name='', last_name='', active=True):
         """
         Create a new, inactive ``User``, generate a
         ``RegistrationProfile`` and email its activation key to the
@@ -76,7 +84,9 @@ class RegistrationManager(models.Manager):
         
         """
         new_user = User.objects.create_user(username, email, password)
-        new_user.is_active = False
+        new_user.first_name = first_name
+        new_user.last_name = last_name
+        new_user.is_active = active
         new_user.save()
 
         registration_profile = self.create_profile(new_user)
@@ -85,7 +95,23 @@ class RegistrationManager(models.Manager):
             registration_profile.send_activation_email(site)
 
         return new_user
-    create_inactive_user = transaction.commit_on_success(create_inactive_user)
+    create_user = transaction.commit_on_success(create_user)
+
+    def validate_existing_user(self, user, site):
+        """
+        Given an existing ``User``, generate a
+        ``RegistrationProfile`` and email its activation key to the
+        ``User``
+        
+        """
+        try:
+            old_rp = RegistrationProfile.objects.get(user=user)
+            old_rp.delete()
+        except RegistrationProfile.DoesNotExist:
+            pass
+        
+        new_rp = RegistrationProfile.objects.create_profile(user)
+        new_rp.send_activation_email(site)
 
     def create_profile(self, user):
         """
@@ -173,7 +199,8 @@ class RegistrationProfile(models.Model):
     """
     ACTIVATED = u"ALREADY_ACTIVATED"
     
-    user = models.ForeignKey(User, unique=True, verbose_name=_('user'))
+    user = models.OneToOneField(User, verbose_name=_('user'),
+                                related_name='registration_profile')
     activation_key = models.CharField(_('activation key'), max_length=40)
     
     objects = RegistrationManager()
@@ -184,7 +211,16 @@ class RegistrationProfile(models.Model):
     
     def __unicode__(self):
         return u"Registration information for %s" % self.user
-    
+
+    def is_validated(self):
+        """
+        In the case where users are set active upon registration, 
+        the activation key can still be used to validate the user's
+        email address. In this case, The is_validated method can be 
+        used to check if the email supplied is valid.
+        """
+        return self.activation_key == self.ACTIVATED
+
     def activation_key_expired(self):
         """
         Determine whether this ``RegistrationProfile``'s activation
