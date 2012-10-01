@@ -275,6 +275,9 @@ class RegistrationProfile(models.Model):
             The number of days remaining during which the account may
             be activated.
 
+        ``user``
+            The user who is receiving the activation email.
+
         ``site``
             An object representing the site on which the user
             registered; depending on whether ``django.contrib.sites``
@@ -288,6 +291,7 @@ class RegistrationProfile(models.Model):
         """
         ctx_dict = {'activation_key': self.activation_key,
                     'expiration_days': settings.ACCOUNT_ACTIVATION_DAYS,
+                    'user': self.user,
                     'site': site}
         subject = render_to_string('registration/activation_email_subject.txt',
                                    ctx_dict)
