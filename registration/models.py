@@ -5,9 +5,11 @@ import re
 
 from django.conf import settings
 from django.contrib.auth.models import User
+from django.core.mail import EmailMultiAlternatives
 from django.db import models
 from django.db import transaction
-from django.template.loader import render_to_string
+from django.template.loader import render_to_string, get_template
+from django.template import TemplateDoesNotExist
 from django.utils.translation import ugettext_lazy as _
 
 try:
@@ -263,7 +265,10 @@ class RegistrationProfile(models.Model):
             into only a single line.
 
         ``registration/activation_email.txt``
-            This template will be used for the body of the email.
+            This template will be used for the plain-text body of the email.
+
+        ``registration/activation_email.html``
+            This template will be used for the HTML body of the email.
 
         These templates will each receive the following context
         variables:
@@ -297,9 +302,24 @@ class RegistrationProfile(models.Model):
                                    ctx_dict)
         # Email subject *must not* contain newlines
         subject = ''.join(subject.splitlines())
-        
-        message = render_to_string('registration/activation_email.txt',
-                                   ctx_dict)
-        
-        self.user.email_user(subject, message, settings.DEFAULT_FROM_EMAIL)
-    
+
+        message = {}
+        for ext in ['txt', 'html']:
+            try:
+                t = get_template('registration/activation_email.{0}'.format(ext))
+                message[ext] = t.render(ctx_dict)
+            except TemplateDoesNotExist:
+                pass
+
+        # Make sure there is at least a .txt version
+        if 'txt' not in message:
+            raise TemplateDoesNotExist('registration/activation_email.txt')
+
+        from_email = settings.DEFAULT_FROM_EMAIL
+        email = EmailMultiAlternatives(unicode(_(subject)), message['txt'],
+            from_email, [self.user.email])
+
+        if 'html' in message:
+            email.attach_alternative(message['html'], 'text/html')
+
+        email.send()
