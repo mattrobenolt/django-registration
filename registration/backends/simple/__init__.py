@@ -29,7 +29,8 @@ class SimpleBackend(object):
         login(request, new_user)
         signals.user_registered.send(sender=self.__class__,
                                      user=new_user,
-                                     request=request)
+                                     request=request,
+                                     cleaned_data=kwargs)
         return new_user
 
     def activate(self, **kwargs):
